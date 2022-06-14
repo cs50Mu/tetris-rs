@@ -10,6 +10,21 @@ mod piece;
 type Coordinate = cgmath::Point2<usize>;
 type Offset = cgmath::Vector2<isize>;
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum MoveKind {
+    Left,
+    Right,
+}
+
+impl MoveKind {
+    fn offset(&self) -> Offset {
+        match self {
+            MoveKind::Left => Offset::new(-1, 0),
+            MoveKind::Right => Offset::new(1, 0),
+        }
+    }
+}
+
 pub struct Engine {
     matrix: Matrix,
     bag: Vec<PieceKind>,
@@ -40,17 +55,67 @@ impl Engine {
             .cursor
             .take()
             .expect("called place_cursor without cursor");
-        for coord in cursor.cells().expect("cursor is out of bounds") {
-            // 这样就得到一个可变引用了
-            let cell = &mut self.matrix[coord];
-            // cell should not be occupied yet (false)
-            debug_assert!(!*cell);
-            *cell = true;
+        debug_assert!(
+            self.matrix.is_placeable(&cursor),
+            "Tried to place cursor in an unplaceable location: {:?}",
+            cursor
+        );
+        for coord in cursor.cells().unwrap() {
+            self.matrix[coord] = Some(cursor.kind.color());
         }
+    }
+
+    fn move_cursor(&mut self, kind: MoveKind) -> Result<(), ()> {
+        if let Some(cursor) = self.cursor.as_mut() {
+            let new_cursor = cursor.moved_by(kind.offset());
+            if self.matrix.is_clipping(&new_cursor) {
+                Err(())
+            } else {
+                self.cursor = Some(new_cursor);
+                Ok(())
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    fn tick_down(&mut self) {
+        self.cursor = Some(self.ticked_down_cursor().unwrap());
+    }
+
+    pub fn cusor_has_hit_bottom(&self) -> bool {
+        self.cursor.is_some() && self.ticked_down_cursor().is_none()
+    }
+
+    fn ticked_down_cursor(&self) -> Option<Piece> {
+        if let Some(cursor) = &self.cursor {
+            let new_cursor = cursor.moved_by(Offset::new(0, -1));
+            (!self.matrix.is_clipping(&new_cursor)).then(|| new_cursor)
+        } else {
+            None
+        }
+    }
+
+    fn hard_drop(&mut self) {
+        while let Some(new_cursor) = self.ticked_down_cursor() {
+            self.cursor = Some(new_cursor);
+        }
+        self.place_cursor();
     }
 }
 
-struct Matrix([bool; Self::SIZE]);
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Color {
+    Yellow,
+    Cyan,
+    Purple,
+    Orange,
+    Blue,
+    Green,
+    Red,
+}
+
+struct Matrix([Option<Color>; Self::SIZE]);
 
 impl Matrix {
     const WIDTH: usize = 10;
@@ -58,31 +123,55 @@ impl Matrix {
     const SIZE: usize = Self::WIDTH * Self::HEIGHT;
 
     // 还可以这样来定义参数。。
-    fn in_bounds(Coordinate { x, y }: Coordinate) -> bool {
+    fn on_matrix(Coordinate { x, y }: Coordinate) -> bool {
         x < Self::WIDTH && y < Self::HEIGHT
     }
 
+    fn valid_coord(Coordinate { x, y }: Coordinate) -> bool {
+        x < Self::WIDTH
+    }
+
     fn blank() -> Self {
-        Self([false; Self::SIZE])
+        Self([None; Self::SIZE])
     }
 
     fn indexing(Coordinate { x, y }: Coordinate) -> usize {
         y * Self::WIDTH + x
     }
+
+    fn is_placeable(&self, piece: &Piece) -> bool {
+        if let Some(cells) = piece.cells() {
+            cells
+                .into_iter()
+                .all(|coord| Matrix::on_matrix(coord) && self[coord].is_none())
+        } else {
+            false
+        }
+    }
+
+    fn is_clipping(&self, piece: &Piece) -> bool {
+        if let Some(cells) = piece.cells() {
+            cells
+                .into_iter()
+                .any(|coord| !Matrix::on_matrix(coord) || self[coord].is_some())
+        } else {
+            true
+        }
+    }
 }
 
 impl Index<Coordinate> for Matrix {
-    type Output = bool;
+    type Output = Option<Color>;
 
     fn index(&self, coord: Coordinate) -> &Self::Output {
-        debug_assert!(Self::in_bounds(coord));
+        debug_assert!(Self::on_matrix(coord));
         &self.0[Self::indexing(coord)]
     }
 }
 
 impl IndexMut<Coordinate> for Matrix {
     fn index_mut(&mut self, coord: Coordinate) -> &mut Self::Output {
-        debug_assert!(Self::in_bounds(coord));
+        debug_assert!(Self::on_matrix(coord));
         &mut self.0[Self::indexing(coord)]
     }
 }

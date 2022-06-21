@@ -2,15 +2,16 @@ use cgmath::{EuclideanSpace, Zero};
 
 use super::{Color, Coordinate, Matrix, Offset};
 
-#[derive(Debug)]
-pub(super) struct Piece {
+#[derive(Debug, Copy, Clone)]
+// pub(super) struct Piece {
+pub struct Piece {
     pub kind: Kind,
     pub position: Offset,
     pub rotation: Rotation,
 }
 
 impl Piece {
-    const CELL_COUNT: usize = 4;
+    pub const CELL_COUNT: usize = 4;
 
     // rotate 后再叠加 piece 原来的坐标
     // 可以得到 piece 现在的新坐标

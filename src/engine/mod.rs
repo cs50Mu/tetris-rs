@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut};
 
-use self::piece::{Kind as PieceKind, Piece};
+use self::piece::{Kind as PieceKind, Piece, Rotation};
 use cgmath::EuclideanSpace;
 use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
@@ -30,7 +30,7 @@ pub struct Engine {
     matrix: Matrix,
     bag: Vec<PieceKind>,
     rng: ThreadRng,
-    cursor: Option<Piece>,
+    pub cursor: Option<Piece>,
 }
 
 impl Engine {
@@ -48,6 +48,22 @@ impl Engine {
             matrix,
             ..Self::new()
         }
+    }
+
+    pub fn rotate_clockwise(&mut self) {
+        if let Some(mut cursor) = self.cursor {
+            let rotations = [Rotation::N, Rotation::E, Rotation::S, Rotation::W];
+            // let curr_rotation = cursor.rotation;
+            let curr_rotation_idx = rotations.iter().position(|&x| x == cursor.rotation).unwrap();
+            let next_rotation_idx = (curr_rotation_idx + 1) % rotations.len();
+            cursor.rotation = rotations[next_rotation_idx];
+            self.cursor = Some(cursor);
+        }
+    }
+
+    pub fn cursor_info(&self) -> Option<([Coordinate; Piece::CELL_COUNT], Color)> {
+        let cursor = self.cursor?;
+        Some((cursor.cells().unwrap(), cursor.kind.color()))
     }
 
     pub fn debug_test_cursor(&mut self, kind: PieceKind, position: Offset) {
@@ -82,7 +98,7 @@ impl Engine {
         }
     }
 
-    fn move_cursor(&mut self, kind: MoveKind) -> Result<(), ()> {
+    pub fn move_cursor(&mut self, kind: MoveKind) -> Result<(), ()> {
         if let Some(cursor) = self.cursor.as_mut() {
             let new_cursor = cursor.moved_by(kind.offset());
             if self.matrix.is_clipping(&new_cursor) {
@@ -113,7 +129,7 @@ impl Engine {
         }
     }
 
-    fn hard_drop(&mut self) {
+    pub fn hard_drop(&mut self) {
         while let Some(new_cursor) = self.ticked_down_cursor() {
             self.cursor = Some(new_cursor);
         }

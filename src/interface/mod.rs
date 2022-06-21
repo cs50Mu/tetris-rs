@@ -1,4 +1,4 @@
-use crate::engine::{Engine, Matrix};
+use crate::engine::{Engine, Matrix, MoveKind};
 use cgmath::Vector2;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -19,7 +19,7 @@ const WINDOW_TITLE: &str = "Tetris";
 // not at the bottom-left. The same goes for all shapes.
 
 impl Interface {
-    pub fn run(engine: Engine) {
+    pub fn run(mut engine: Engine) {
         // let interface = Self { engine };
         // drop(interface);
         // todo!("run the game")
@@ -50,6 +50,23 @@ impl Interface {
                         keycode: Some(Keycode::Escape),
                         ..
                     } => break 'running,
+                    Event::KeyDown {
+                        keycode: Some(key), ..
+                    } => match key {
+                        Keycode::Right => engine.move_cursor(MoveKind::Right).unwrap(),
+                        Keycode::Left => engine.move_cursor(MoveKind::Left).unwrap(),
+                        // hard_drop
+                        Keycode::Space => engine.hard_drop(),
+                        // rotate
+                        Keycode::Up => {
+                            println!("Up..");
+                            engine.rotate_clockwise();
+                            dbg!(engine.cursor);
+                        }
+                        // soft drop
+                        Keycode::Down => {}
+                        _ => {}
+                    },
                     _ => {}
                 }
             }
@@ -152,6 +169,26 @@ impl Interface {
                     );
 
                     canvas.set_draw_color(cell_color.screen_color());
+                    // canvas.draw_rect(cell_rect).unwrap();
+                    canvas.fill_rect(cell_rect).unwrap();
+                }
+            }
+
+            if let Some((cursor_cells, color)) = engine.cursor_info() {
+                for coord in cursor_cells {
+                    let coord = coord.cast::<i32>().unwrap();
+                    let this_x = coord.x * matrix_width as i32 / Matrix::WIDTH as i32;
+                    let this_y = coord.y * matrix_height as i32 / Matrix::HEIGHT as i32;
+                    let next_x = (coord.x + 1) * matrix_width as i32 / Matrix::WIDTH as i32;
+                    let next_y = (coord.y + 1) * matrix_height as i32 / Matrix::HEIGHT as i32;
+                    let cell_rect = Rect::new(
+                        matrix_origin.x + this_x,
+                        matrix_origin.y + this_y,
+                        (next_x - this_x) as u32,
+                        (next_y - this_y) as u32,
+                    );
+
+                    canvas.set_draw_color(color.screen_color());
                     // canvas.draw_rect(cell_rect).unwrap();
                     canvas.fill_rect(cell_rect).unwrap();
                 }

@@ -1,11 +1,12 @@
 use std::ops::{Index, IndexMut};
 
 use self::piece::{Kind as PieceKind, Piece};
+use cgmath::EuclideanSpace;
 use rand::rngs::ThreadRng;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
-mod piece;
+pub mod piece;
 
 type Coordinate = cgmath::Point2<usize>;
 type Offset = cgmath::Vector2<isize>;
@@ -40,6 +41,22 @@ impl Engine {
             rng: thread_rng(),
             cursor: None,
         }
+    }
+
+    pub fn with_matrix(matrix: Matrix) -> Self {
+        Self {
+            matrix,
+            ..Self::new()
+        }
+    }
+
+    pub fn debug_test_cursor(&mut self, kind: PieceKind, position: Offset) {
+        let piece = Piece {
+            kind,
+            rotation: piece::Rotation::N,
+            position,
+        };
+        self.cursor = Some(piece);
     }
 
     fn refill_bag(&mut self) {
@@ -102,6 +119,13 @@ impl Engine {
         }
         self.place_cursor();
     }
+
+    pub fn cells(&self) -> CellIter<'_> {
+        CellIter {
+            position: Coordinate::origin(),
+            cells: self.matrix.0.iter(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -115,11 +139,11 @@ pub enum Color {
     Red,
 }
 
-struct Matrix([Option<Color>; Self::SIZE]);
+pub struct Matrix([Option<Color>; Self::SIZE]);
 
 impl Matrix {
-    const WIDTH: usize = 10;
-    const HEIGHT: usize = 20;
+    pub const WIDTH: usize = 10;
+    pub const HEIGHT: usize = 20;
     const SIZE: usize = Self::WIDTH * Self::HEIGHT;
 
     // 还可以这样来定义参数。。
@@ -131,7 +155,7 @@ impl Matrix {
         x < Self::WIDTH
     }
 
-    fn blank() -> Self {
+    pub fn blank() -> Self {
         Self([None; Self::SIZE])
     }
 
@@ -173,5 +197,90 @@ impl IndexMut<Coordinate> for Matrix {
     fn index_mut(&mut self, coord: Coordinate) -> &mut Self::Output {
         debug_assert!(Self::on_matrix(coord));
         &mut self.0[Self::indexing(coord)]
+    }
+}
+
+pub struct CellIter<'matrix> {
+    position: Coordinate,
+    cells: ::std::slice::Iter<'matrix, Option<Color>>,
+}
+
+impl<'matrix> Iterator for CellIter<'matrix> {
+    type Item = (Coordinate, &'matrix Option<Color>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(cell) = self.cells.next() {
+            let coord = self.position;
+            self.position.grid_incd();
+            Some((coord, cell))
+        } else {
+            None
+        }
+    }
+}
+
+pub trait GridIncrement: Sized {
+    type Width;
+    const WIDTH: Self::Width;
+
+    fn grid_inc(mut self) -> Self {
+        self.grid_incd();
+        self
+    }
+
+    fn grid_incd(&mut self);
+}
+
+impl GridIncrement for Coordinate {
+    type Width = usize;
+    const WIDTH: Self::Width = Matrix::WIDTH;
+
+    fn grid_incd(&mut self) {
+        self.x += 1;
+        self.x %= Self::WIDTH;
+        if self.x == 0 {
+            self.y += 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn cell_iter() {
+        let mut matrix = Matrix::blank();
+        matrix[Coordinate::new(2, 0)] = Some(Color::Blue);
+        matrix[Coordinate::new(3, 1)] = Some(Color::Green);
+
+        let mut cell_iter = CellIter {
+            position: Coordinate::origin(),
+            cells: matrix.0.iter(),
+        };
+
+        // 这里使用引用可以让这个 iter 被使用多次
+        // 因为 take 接受 self
+        // https://stackoverflow.com/questions/31374051/why-does-iteratortake-while-take-ownership-of-the-iterator
+        // let first_five = (&mut cell_iter).take(5).collect::<Vec<_>>();
+        let first_five = cell_iter.by_ref().take(5).collect::<Vec<_>>();
+        assert_eq!(
+            first_five,
+            [
+                (Coordinate::new(0, 0), &None),
+                (Coordinate::new(1, 0), &None),
+                (Coordinate::new(2, 0), &Some(Color::Blue)),
+                (Coordinate::new(3, 0), &None),
+                (Coordinate::new(4, 0), &None),
+            ]
+        );
+
+        let green_item = (&mut cell_iter).skip(8).next();
+        assert_eq!(
+            green_item,
+            Some((Coordinate::new(3, 1), &Some(Color::Green)))
+        );
+
+        assert!(cell_iter.all(|(_, content)| content.is_none()));
     }
 }

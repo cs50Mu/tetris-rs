@@ -53,7 +53,6 @@ impl Engine {
     pub fn rotate_clockwise(&mut self) {
         if let Some(mut cursor) = self.cursor {
             let rotations = [Rotation::N, Rotation::E, Rotation::S, Rotation::W];
-            // let curr_rotation = cursor.rotation;
             let curr_rotation_idx = rotations.iter().position(|&x| x == cursor.rotation).unwrap();
             let next_rotation_idx = (curr_rotation_idx + 1) % rotations.len();
             cursor.rotation = rotations[next_rotation_idx];
